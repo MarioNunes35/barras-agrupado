@@ -51,6 +51,12 @@ with st.sidebar:
     show_grid = st.checkbox("Mostrar grade horizontal", value=True)
     legend_title = st.text_input("Título da legenda", value="Oven")
 
+    st.header("Exportação PNG (Alta resolução)")
+    png_width = st.number_input("Largura (px)", value=2400, step=100, min_value=400)
+    png_height = st.number_input("Altura (px)", value=1600, step=100, min_value=300)
+    png_scale = st.slider("Escala (multiplicador)", 1, 5, 3)
+    file_png_name = st.text_input("Nome do arquivo (sem extensão)", value="grafico_barras")
+
 # ---------------------------------
 # Carregar dados
 # ---------------------------------
@@ -159,24 +165,42 @@ fig.update_yaxes(range=[y_min, y_max], ticksuffix="%", showgrid=show_grid, gridc
 fig.update_xaxes(tickangle=rotate_x)
 
 st.subheader("Gráfico")
-config = {"displaylogo": False, "toImageButtonOptions": {"format": "png", "filename": "grafico_barras"}}
+# Configura a barra de ferramentas para exportar PNG em alta resolução pelo botão da CÂMERA
+config = {
+    "displaylogo": False,
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": file_png_name,
+        "width": png_width,
+        "height": png_height,
+        "scale": png_scale,
+    },
+}
 st.plotly_chart(fig, use_container_width=True, config=config)
 
-st.info("💡 Dica: Use o botão da barra de ferramentas do gráfico (câmera) para baixar o PNG.")
+st.info("💡 Use o botão da barra do gráfico (ícone de câmera) para baixar PNG na resolução definida na barra lateral.")
 
 # ---------------------------------
-# Downloads (PNG/HTML) com fallback
+# Downloads (PNG/HTML) gerados no servidor
 # ---------------------------------
 col1, col2 = st.columns(2)
 with col1:
     try:
-        # Tentativa de gerar PNG no servidor (requer 'kaleido' + Chrome/Chromium dependendo da versão)
-        png_bytes = fig.to_image(format="png", scale=2)
-        st.download_button("⬇️ Baixar PNG (servidor)", data=png_bytes, file_name="grafico_barras.png", mime="image/png")
+        # Alta resolução via kaleido/engine do Plotly
+        png_bytes = fig.to_image(format="png", width=png_width, height=png_height, scale=png_scale)
+        st.download_button("⬇️ Baixar PNG (servidor, alta resolução)",
+                           data=png_bytes,
+                           file_name=f"{file_png_name}.png",
+                           mime="image/png")
     except Exception as e:
-        st.warning("Exportação PNG no servidor indisponível neste ambiente. Use o botão da barra do gráfico (câmera) ou baixe o HTML.")
+        st.warning("Exportação PNG no servidor indisponível neste ambiente. "
+                   "O botão da câmera ainda permite baixar PNG no navegador nas dimensões escolhidas.")
 with col2:
     html_bytes = fig.to_html(full_html=True, include_plotlyjs="cdn").encode("utf-8")
-    st.download_button("⬇️ Baixar HTML interativo", data=html_bytes, file_name="grafico_barras.html", mime="text/html")
+    st.download_button("⬇️ Baixar HTML interativo",
+                       data=html_bytes,
+                       file_name=f"{file_png_name}.html",
+                       mime="text/html")
 
 st.caption("Compatível com dados em formato longo ou largo. Para erros em formato largo, nomeie a coluna como '<serie>_err'.")
+
