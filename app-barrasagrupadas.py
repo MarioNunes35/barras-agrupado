@@ -12,9 +12,10 @@ import streamlit as st
 # =============================================
 # Helper: Color Palettes (incl. colorblind-safe)
 # =============================================
+# Reordena Okabe-Ito para evitar preto como cor principal das barras
 OKABE_ITO = [
-    "#000000", "#E69F00", "#56B4E9", "#009E73",
-    "#F0E442", "#0072B2", "#D55E00", "#CC79A7"
+    "#56B4E9", "#E69F00", "#009E73", "#F0E442",
+    "#0072B2", "#D55E00", "#CC79A7", "#000000"
 ]
 
 PALETTES = {
@@ -29,6 +30,12 @@ PALETTES = {
     "Cividis (seq)": px.colors.sequential.Cividis,
 }
 
+# Helper: remove preto da paleta quando houver múltiplas séries
+def effective_palette(name: str, n_series: int):
+    pal = PALETTES.get(name, px.colors.qualitative.Plotly)
+    if n_series > 1:
+        pal = [c for c in pal if c.lower() not in ("#000000", "black")] or pal
+    return pal
 # ============================
 # Streamlit Page Configuration
 # ============================
@@ -69,7 +76,7 @@ def read_any_table(uploaded_file) -> pd.DataFrame:
         return pd.read_excel(uploaded_file)
     # Try several CSV-like options
     content = uploaded_file.read()
-    for sep in [",", ";", "\t", " "]:
+    for sep in [",", ";", "	", " "]:
         for decimal in [".", ","]:
             try:
                 df = pd.read_csv(io.BytesIO(content), sep=sep, decimal=decimal)
@@ -146,6 +153,16 @@ PRESETS = {
 left, right = st.columns([1, 3], gap="large")
 
 with left:
+    # CSS para tornar a coluna esquerda rolável e independente do gráfico
+    st.markdown(
+        """<style>
+        .left-scroll{position:sticky; top:0; height:100vh; overflow-y:auto; padding-right:0.5rem;}
+        @media (max-width: 1000px){ .left-scroll{ position:static; height:auto; } }
+        </style>""",
+        unsafe_allow_html=True
+    )
+    st.markdown('<div class="left-scroll">', unsafe_allow_html=True)
+
     st.header("⚙️ Controles")
     st.subheader("Dados")
 
@@ -283,11 +300,13 @@ with left:
                 series_order = value_cols
 
     manual_colors: Dict[str, str] = {}
-    if df_long is not None:
-        with st.expander("🎯 Cores por série (manual)", expanded=False):
-            series_sorted = sorted(series_order) if series_order else sorted(df_long["Series"].unique())
-            for s in series_sorted:
-                manual_colors[s] = st.color_picker(f"Cor para {s}", value=None) or ""
+if df_long is not None:
+    with st.expander("🎯 Cores por série (manual)", expanded=False):
+        series_sorted = sorted(series_order) if series_order else sorted(df_long["Series"].unique())
+        for s in series_sorted:
+            manual_colors[s] = st.color_picker(f"Cor para {s}", value=None) or ""
+    # Fechamento do wrapper rolável
+    st.markdown('</div>', unsafe_allow_html=True) or ""
 
 # =======================
 # Figure Builder Function (SAFE LAYOUT)
@@ -315,7 +334,7 @@ def build_grouped_bar(
     value_size: int,
     manual_colors: Optional[Dict[str, str]] = None,
 ) -> go.Figure:
-    pal = PALETTES.get(palette_name, px.colors.qualitative.Plotly)
+    pal = effective_palette(palette_name, n_series=len(pd.unique(df_long["Series"])))
 
     # Mapa de cores (respeita manual)
     series = list(pd.unique(df_long["Series"]))
@@ -350,6 +369,7 @@ def build_grouped_bar(
                 y=y_vals,
                 marker_color=color_map.get(s),
                 marker_line_width=outline,
+                marker_line_color="rgba(0,0,0,0.65)" if outline and outline>0 else None,
                 opacity=opacity,
                 error_y=dict(type="data", array=err, visible=bool(has_err)) if bool(has_err) else None,
                 text=text_vals,
@@ -514,5 +534,8 @@ st.caption("Dica: salve um JSON de configuração e reutilize em outros apps par
 # numpy>=1.26
 # openpyxl>=3.1
 # xlsxwriter>=3.1
+
+
+
 
 
