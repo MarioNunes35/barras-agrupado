@@ -255,10 +255,10 @@ with left:
     if df_raw is not None:
         if long_mode.startswith("Longo"):
             cat_guess, series_guess, val_guess, err_guess = infer_long_format(df_raw)
-            cat_col = st.selectbox("Categoria (X)", df_raw.columns, index=(df_raw.columns.get_loc(cat_guess) if cat_guess in df_raw.columns else 0))
-            series_col = st.selectbox("Série (grupo)", df_raw.columns, index=(df_raw.columns.get_loc(series_guess) if series_guess in df_raw.columns else 1))
-            value_col = st.selectbox("Valor (Y)", df_raw.columns, index=(df_raw.columns.get_loc(val_guess) if val_guess in df_raw.columns else 2))
-            error_col = st.selectbox("Erro (opcional)", ["<nenhum>"] + list(df_raw.columns), index=( ["<nenhum>"] + list(df_raw.columns) ).index(err_guess) if err_guess in df_raw.columns else 0)
+            cat_col = st.selectbox("Categoria (X)", df_raw.columns, index=(df_raw.columns.get_loc(cat_guess) if (cat_guess in df_raw.columns) else 0))
+            series_col = st.selectbox("Série (grupo)", df_raw.columns, index=(df_raw.columns.get_loc(series_guess) if (series_guess in df_raw.columns) else 1))
+            value_col = st.selectbox("Valor (Y)", df_raw.columns, index=(df_raw.columns.get_loc(val_guess) if (val_guess in df_raw.columns) else 2))
+            error_col = st.selectbox("Erro (opcional)", ["<nenhum>"] + list(df_raw.columns), index=( ["<nenhum>"] + list(df_raw.columns) ).index(err_guess) if (err_guess in df_raw.columns) else 0)
             if error_col == "<nenhum>":
                 error_col = None
             df_long = df_raw.rename(columns={cat_col: "Category", series_col: "Series", value_col: "Value"}).copy()
@@ -290,7 +290,7 @@ with left:
                 manual_colors[s] = st.color_picker(f"Cor para {s}", value=None) or ""
 
 # =======================
-# Figure Builder Function
+# Figure Builder Function (SAFE LAYOUT)
 # =======================
 def build_grouped_bar(
     df_long: pd.DataFrame,
@@ -317,7 +317,7 @@ def build_grouped_bar(
 ) -> go.Figure:
     pal = PALETTES.get(palette_name, px.colors.qualitative.Plotly)
 
-    # Create color map respecting manual choices
+    # Mapa de cores (respeita manual)
     series = list(pd.unique(df_long["Series"]))
     color_map = {}
     i = 0
@@ -330,8 +330,6 @@ def build_grouped_bar(
 
     fig = go.Figure()
 
-    categories = list(pd.unique(df_long["Category"]))
-
     for s in series:
         sub = df_long[df_long["Series"] == s]
         y_vals = sub["Value"].to_numpy(dtype=float)
@@ -340,7 +338,6 @@ def build_grouped_bar(
 
         text_vals = None
         if show_values:
-            # format values
             try:
                 text_vals = [f"{v:{value_fmt}}" for v in y_vals]
             except Exception:
@@ -357,11 +354,11 @@ def build_grouped_bar(
                 error_y=dict(type="data", array=err, visible=bool(has_err)) if bool(has_err) else None,
                 text=text_vals,
                 textposition="outside" if show_values else None,
-                textfont=dict(size=value_size),
+                textfont=dict(size=value_size) if show_values else None,
             )
         )
 
-    # Legend positions
+    # Posição da legenda
     legend = {"orientation": legend_orientation}
     if legend_pos == "top_outside":
         legend.update(x=0.5, y=1.15, xanchor="center", yanchor="bottom")
@@ -370,34 +367,43 @@ def build_grouped_bar(
     elif legend_pos == "bottom_inside":
         legend.update(x=0.5, y=-0.2, xanchor="center", yanchor="top")
     elif legend_pos == "top_inside":
-        legend.update(x=0.5, y=1.02, xanchor="center", yanchor="bottom", bgcolor="rgba(255,255,255,0.5)")
+        legend.update(x=0.5, y=1.02, xanchor="center", yanchor="bottom")
 
-    # Layout
+    # Escala Y segura
+    y_scale_final = y_scale
+    if y_scale == "log" and (df_long["Value"] <= 0).any():
+        y_scale_final = "linear"
+        try:
+            st.warning("Valores ≤ 0 detectados. Escala Y ajustada para 'linear'.")
+        except Exception:
+            pass
+
+    # Limites Y: só se ambos forem válidos
     y_range = None
     try:
         y0 = float(y_min) if y_min not in (None, "") else None
         y1 = float(y_max) if y_max not in (None, "") else None
-        if y0 is not None or y1 is not None:
-            y_range = [y0 if y0 is not None else None, y1 if y1 is not None else None]
+        if (y0 is not None) and (y1 is not None):
+            if not (y_scale_final == "log" and (y0 <= 0 or y1 <= 0)):
+                y_range = [y0, y1]
     except Exception:
         y_range = None
 
-    fig.update_layout(
+    # Monta kwargs sem None
+    layout_kwargs = dict(
         barmode="group",
         bargap=bargap,
         bargroupgap=bargroupgap,
-        title=dict(text=title, x=0.5, font=dict(size=font_sizes["title"])) if title else None,
         xaxis=dict(
-            title=x_label,
+            title=x_label if x_label else None,
             tickangle=x_rotate,
             titlefont=dict(size=font_sizes["axes"]),
             tickfont=dict(size=font_sizes["ticks"]),
             showgrid=show_grid,
         ),
         yaxis=dict(
-            title=y_label,
-            type=y_scale,
-            range=y_range,
+            title=y_label if y_label else None,
+            type=y_scale_final,
             titlefont=dict(size=font_sizes["axes"]),
             tickfont=dict(size=font_sizes["ticks"]),
             showgrid=show_grid,
@@ -406,6 +412,16 @@ def build_grouped_bar(
         margin=dict(l=40, r=40, t=80, b=80),
     )
 
+    if title:
+        layout_kwargs["title"] = dict(text=title, x=0.5, font=dict(size=font_sizes["title"]))
+    if y_range is not None:
+        layout_kwargs["yaxis"]["range"] = y_range
+
+    # Remove chaves None nos eixos
+    for ax in ("xaxis", "yaxis"):
+        layout_kwargs[ax] = {k: v for k, v in layout_kwargs[ax].items() if v is not None}
+
+    fig.update_layout(**layout_kwargs)
     return fig
 
 # ==================
@@ -413,10 +429,10 @@ def build_grouped_bar(
 # ==================
 with right:
     st.header("📊 Gráfico de Barras Agrupadas")
-    if df_raw is None:
+    if 'df_raw' not in locals() or df_raw is None:
         st.info("Envie um arquivo de dados na barra lateral para começar.")
     else:
-        if df_long is None:
+        if 'df_long' not in locals() or df_long is None:
             st.warning("Configure o mapeamento de colunas para gerar o gráfico.")
         else:
             fig = build_grouped_bar(
@@ -457,7 +473,7 @@ with right:
 
             # Image export
             with col_exp1:
-                if "png" in export_formats or "svg" in export_formats or "pdf" in export_formats:
+                if any(f in export_formats for f in ("png", "svg", "pdf")):
                     fmt = st.selectbox("Formato imagem", [f for f in export_formats if f in ("png", "svg", "pdf")], index=0)
                     img_bytes = fig_to_image_bytes(fig, fmt=fmt, scale=float(dpi))
                     if img_bytes:
@@ -485,5 +501,18 @@ with right:
 # Footer / Notes
 # ==============
 st.caption("Dica: salve um JSON de configuração e reutilize em outros apps para padronizar estilos e exportações.")
+
+# =====================
+# requirements.txt (sugestão)
+# =====================
+# Coloque isto em um arquivo separado chamado requirements.txt no seu repositório:
+#
+# streamlit>=1.36
+# plotly==5.22.0
+# kaleido==0.2.1
+# pandas>=2.1
+# numpy>=1.26
+# openpyxl>=3.1
+# xlsxwriter>=3.1
 
 
