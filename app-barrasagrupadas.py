@@ -33,9 +33,11 @@ PALETTES = {
 # Helper: remove preto da paleta quando houver múltiplas séries
 def effective_palette(name: str, n_series: int):
     pal = PALETTES.get(name, px.colors.qualitative.Plotly)
-    if n_series > 1:
-        pal = [c for c in pal if c.lower() not in ("#000000", "black")] or pal
-    return pal
+    # move o preto para o final sempre, mesmo com 1 série
+    non_black = [c for c in pal if str(c).lower() not in ("#000000", "black")]
+    blacks = [c for c in pal if str(c).lower() in ("#000000", "black")]
+    pal2 = (non_black + blacks) or pal
+    return pal2
 # ============================
 # Streamlit Page Configuration
 # ============================
@@ -153,16 +155,8 @@ PRESETS = {
 left, right = st.columns([1, 3], gap="large")
 
 with left:
-    # CSS para tornar a coluna esquerda rolável e independente do gráfico
-    st.markdown(
-        """<style>
-        .left-scroll{position:sticky; top:0; height:100vh; overflow-y:auto; padding-right:0.5rem;}
-        @media (max-width: 1000px){ .left-scroll{ position:static; height:auto; } }
-        </style>""",
-        unsafe_allow_html=True
-    )
-    st.markdown('<div class="left-scroll">', unsafe_allow_html=True)
-
+    left_box = st.container(height=780, border=True)
+with left_box:
     st.header("⚙️ Controles")
     st.subheader("Dados")
 
@@ -299,14 +293,12 @@ with left:
                 df_long = to_long_format(df_raw, cat_col, value_cols, error_cols if use_err else None)
                 series_order = value_cols
 
-    manual_colors: Dict[str, str] = {}
-if df_long is not None:
-    with st.expander("🎯 Cores por série (manual)", expanded=False):
-        series_sorted = sorted(series_order) if series_order else sorted(df_long["Series"].unique())
-        for s in series_sorted:
-            manual_colors[s] = st.color_picker(f"Cor para {s}", value=None) or ""
-    # Fechamento do wrapper rolável
-    st.markdown('</div>', unsafe_allow_html=True) or ""
+        manual_colors: Dict[str, str] = {}
+    if df_long is not None:
+        with st.expander("🎯 Cores por série (manual)", expanded=False):
+            series_sorted = sorted(series_order) if series_order else sorted(df_long["Series"].unique())
+            for s in series_sorted:
+                manual_colors[s] = st.color_picker(f"Cor para {s}", value=None) or ""
 
 # =======================
 # Figure Builder Function (SAFE LAYOUT)
@@ -534,6 +526,7 @@ st.caption("Dica: salve um JSON de configuração e reutilize em outros apps par
 # numpy>=1.26
 # openpyxl>=3.1
 # xlsxwriter>=3.1
+
 
 
 
